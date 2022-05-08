@@ -39,17 +39,29 @@ exports.pay = async (req, res) => {
     const new_balance_contractor = contractor.balance + job[0].price;
     const new_balance_client = client.balance - job[0].price;
 
-    Profile.update({ balance: new_balance_client }, {
-      where: { id: contract.ClientId }
-    });
-    Profile.update({ balance: new_balance_contractor }, {
-      where: { id: contract.ContractorId }
-    });
-    Job.update({ paid: 1, paymentDate: new Date() }, {
-      where: { id: job[0].id }
-    });
+    const t = await sequelize.transaction();
 
-    res.json({ payment: 'successful' });
+    try {
+      await Profile.update({ balance: new_balance_client }, {
+        where: { id: contract.ClientId }
+      }, { transaction: t }).catch(err => { throw err; });
+      await Profile.update({ balance: new_balance_contractor }, {
+        where: { id: contract.ContractorId }
+      }, { transaction: t }).catch(err => { throw err; });
+      await Job.update({ paid: 1, paymentDate: new Date() }, {
+        where: { id: job[0].id }
+      }, { transaction: t }).catch(err => { throw err; });
+
+      await t.commit();
+
+      res.json({ payment: 'successful' });
+
+    } catch (err) {
+      await t.rollback();
+      console.error(err);
+      res.json({ payment: 'failed' });
+    }
+
   } else {
     res.json({ payment: 'denied', message: 'insufficient funds' });
   }
